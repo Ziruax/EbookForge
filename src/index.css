@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Georgia", serif;
+  
+  --color-natural-green: #4A6741;
+  --color-natural-bg: #F7F5F2;
+  --color-natural-accent: #E8E4DF;
+  --color-natural-border: #D1CEC7;
+  --color-natural-text: #2D2926;
+}
+
+@layer base {
+  body {
+    @apply antialiased font-sans bg-natural-bg text-natural-text transition-colors duration-300;
+  }
+}
+
+.canvas-shadow {
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+.serif {
+  @apply font-serif;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-natural-border rounded-full hover:bg-natural-green/20 transition-colors;
+}
+
+/* Prose refinements */
+.prose h1, .prose h2, .prose h3 { @apply font-serif tracking-tight text-natural-text; }
+.prose p { @apply font-serif text-lg leading-relaxed text-natural-text/90; }
+.prose blockquote { @apply border-l-4 border-natural-green bg-natural-green/5 p-6 rounded-r-2xl; }
+.prose code { @apply bg-natural-accent text-natural-text px-1.5 py-0.5 rounded-md font-mono text-sm; }

@@ -1,0 +1,6 @@
+{
+  "name": "EbookForge Complete Studio",
+  "description": "5-step wizard for non-technical users to create, design, and export professional ebooks using Gemini AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
