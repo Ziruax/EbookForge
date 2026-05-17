@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Outfit:wght@400;700&family=Space+Grotesk:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
@@ -6,6 +6,12 @@
   --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-serif: "Georgia", serif;
+  
+  --font-playfair: "Playfair Display", serif;
+  --font-outfit: "Outfit", sans-serif;
+  --font-space: "Space Grotesk", sans-serif;
+  --font-crimson: "Crimson Pro", serif;
+  --font-lora: "Lora", serif;
   
   --color-natural-green: #4A6741;
   --color-natural-bg: #F7F5F2;

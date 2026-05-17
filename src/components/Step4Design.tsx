@@ -13,6 +13,14 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { generateImagePrompt } from '../lib/gemini';
 
+const FONT_COMBINATIONS = [
+  { name: 'Classical', heading: 'font-playfair', body: 'font-serif' },
+  { name: 'Modern', heading: 'font-outfit', body: 'font-sans' },
+  { name: 'Swiss', heading: 'font-space', body: 'font-sans' },
+  { name: 'Academic', heading: 'font-crimson', body: 'font-lora' },
+  { name: 'Standard', heading: 'font-serif italic', body: 'font-serif' },
+];
+
 interface StepProps {
   data: BookData;
   updateData: (updates: Partial<BookData>) => void;
@@ -157,6 +165,19 @@ export function Step4Design({ data, updateData, nextStep, prevStep }: StepProps)
 
   const [viewMode, setViewMode] = useState<'grid' | 'page'>('page');
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [showFontPicker, setShowFontPicker] = useState(false);
+
+  // Initialize settings if not exists
+  useEffect(() => {
+    if (!data.settings) {
+      updateData({
+        settings: {
+          headingFont: 'font-playfair',
+          bodyFont: 'font-serif'
+        }
+      });
+    }
+  }, []);
 
   const scrollToPage = (id: string) => {
     setSelectedPageId(id);
@@ -214,6 +235,54 @@ export function Step4Design({ data, updateData, nextStep, prevStep }: StepProps)
           <button onClick={addPage} className="px-4 py-2 flex items-center gap-2 hover:bg-natural-accent rounded-full font-bold text-[10px] uppercase tracking-widest transition-all text-gray-500">
             <Plus className="w-4 h-4" /> Add Page
           </button>
+
+          <div className="relative">
+            <button 
+              onClick={() => setShowFontPicker(!showFontPicker)}
+              className={cn(
+                "w-10 h-10 flex items-center justify-center rounded-full transition-all",
+                showFontPicker ? "bg-natural-green text-white" : "hover:bg-natural-accent text-gray-400"
+              )}
+            >
+              <Palette className="w-5 h-5" />
+            </button>
+
+            <AnimatePresence>
+              {showFontPicker && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  className="absolute top-full left-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-natural-border p-4 z-50"
+                >
+                  <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Typography Pairings</h3>
+                  <div className="space-y-1">
+                    {FONT_COMBINATIONS.map((combo) => (
+                      <button
+                        key={combo.name}
+                        onClick={() => {
+                          updateData({
+                            settings: {
+                              headingFont: combo.heading,
+                              bodyFont: combo.body
+                            }
+                          });
+                          setShowFontPicker(false);
+                        }}
+                        className={cn(
+                          "w-full text-left p-3 rounded-xl transition-all group hover:bg-natural-accent",
+                          data.settings?.headingFont === combo.heading ? "bg-natural-accent/50 ring-1 ring-natural-green/20" : ""
+                        )}
+                      >
+                        <div className={cn("text-base font-bold tracking-tight mb-0.5", combo.heading)}>{combo.name} Header</div>
+                        <div className={cn("text-[10px] text-gray-400 font-medium", combo.body)}>Body text preview for reading...</div>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -271,7 +340,7 @@ export function Step4Design({ data, updateData, nextStep, prevStep }: StepProps)
             viewMode === 'page' ? "flex items-center justify-center p-0" : ""
           )}>
             {viewMode === 'grid' ? (
-              <div className="space-y-24 pb-48 w-full">
+              <div className="space-y-32 pb-48 w-full">
                 {data.finalPages.map((page, idx) => (
                   <motion.div 
                     key={page.id}
@@ -281,52 +350,118 @@ export function Step4Design({ data, updateData, nextStep, prevStep }: StepProps)
                     viewport={{ once: true, margin: "-100px" }}
                     onClick={() => setSelectedPageId(page.id)}
                     className={cn(
-                      "group relative bg-white canvas-shadow rounded-sm aspect-[1/1.41] p-16 flex flex-col transition-all overflow-hidden mx-auto",
+                      "group relative bg-white canvas-shadow rounded-sm p-16 sm:p-24 flex flex-col transition-all overflow-hidden mx-auto min-h-[800px] w-full",
                       isDarkMode ? "bg-stone-900 border-stone-800" : "bg-white border-natural-border/30",
                       selectedPageId === page.id ? "ring-2 ring-natural-green/20" : ""
                     )}
                   >
-                    <PageRenderer page={page} idx={idx} isDarkMode={isDarkMode} updatePage={updatePage} deletePage={deletePage} setActiveImagePanel={setActiveImagePanel} />
+                    <PageRenderer 
+                      page={page} 
+                      idx={idx} 
+                      isDarkMode={isDarkMode} 
+                      updatePage={updatePage} 
+                      deletePage={deletePage} 
+                      setActiveImagePanel={setActiveImagePanel} 
+                      settings={data.settings}
+                    />
                   </motion.div>
                 ))}
               </div>
             ) : (
-              <AnimatePresence mode="wait">
-                <motion.div 
-                  key={activePageIndex}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className={cn(
-                    "relative bg-white canvas-shadow rounded-sm aspect-[1/1.41] p-16 flex flex-col transition-all overflow-hidden w-full max-w-2xl",
-                    isDarkMode ? "bg-stone-900 border-stone-800" : "bg-white border-natural-border/30"
-                  )}
-                >
-                  <PageRenderer 
-                    page={data.finalPages[activePageIndex]} 
-                    idx={activePageIndex} 
-                    isDarkMode={isDarkMode} 
-                    updatePage={updatePage} 
-                    deletePage={deletePage} 
-                    setActiveImagePanel={setActiveImagePanel} 
-                  />
-                  
-                  {/* Page Navigation Overlay */}
-                  <div className="absolute inset-y-0 left-0 w-20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                     <button onClick={prevPage} disabled={activePageIndex === 0} className="p-4 bg-white/80 rounded-full shadow-lg text-natural-text disabled:opacity-0">
-                        <ChevronLeft className="w-8 h-8" />
-                     </button>
-                  </div>
-                  <div className="absolute inset-y-0 right-0 w-20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                     <button onClick={nextPage} disabled={activePageIndex === data.finalPages.length - 1} className="p-4 bg-white/80 rounded-full shadow-lg text-natural-text disabled:opacity-0">
-                        <ChevronRight className="w-8 h-8" />
-                     </button>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
+              <div className="w-full flex-1 flex items-center justify-center py-12">
+                <AnimatePresence mode="wait">
+                  <motion.div 
+                    key={activePageIndex}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className={cn(
+                      "relative bg-white canvas-shadow rounded-sm p-16 sm:p-24 flex flex-col transition-all w-full max-w-2xl min-h-[80vh]",
+                      isDarkMode ? "bg-stone-900 border-stone-800" : "bg-white border-natural-border/30"
+                    )}
+                  >
+                    <PageRenderer 
+                      page={data.finalPages[activePageIndex]} 
+                      idx={activePageIndex} 
+                      isDarkMode={isDarkMode} 
+                      updatePage={updatePage} 
+                      deletePage={deletePage} 
+                      setActiveImagePanel={setActiveImagePanel} 
+                      settings={data.settings}
+                    />
+                    
+                    {/* Navigation Buttons */}
+                    <div className="absolute top-1/2 -left-20 -translate-y-1/2 lg:block hidden">
+                       <button 
+                        onClick={prevPage} 
+                        disabled={activePageIndex === 0} 
+                        className="p-4 bg-white rounded-full shadow-xl text-natural-text disabled:opacity-30 hover:scale-110 transition-all border border-natural-border"
+                       >
+                          <ChevronLeft className="w-8 h-8" />
+                       </button>
+                    </div>
+                    <div className="absolute top-1/2 -right-20 -translate-y-1/2 lg:block hidden">
+                       <button 
+                        onClick={nextPage} 
+                        disabled={activePageIndex === data.finalPages.length - 1} 
+                        className="p-4 bg-white rounded-full shadow-xl text-natural-text disabled:opacity-30 hover:scale-110 transition-all border border-natural-border"
+                       >
+                          <ChevronRight className="w-8 h-8" />
+                       </button>
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
             )}
           </div>
         </div>
+
+        {/* Bottom Page Navigation Bar for Page View */}
+        {viewMode === 'page' && (
+          <div className={cn(
+            "fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 px-8 py-4 bg-white/90 backdrop-blur-xl border border-natural-border rounded-full shadow-2xl transition-all",
+            isDarkMode && "bg-stone-900/90 border-stone-800"
+          )}>
+            <button 
+              onClick={prevStep}
+              className="text-xs font-black text-gray-400 uppercase tracking-widest hover:text-natural-green transition-colors"
+            >
+              Back to Writing
+            </button>
+            <div className="w-[1px] h-4 bg-natural-border" />
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={prevPage} 
+                disabled={activePageIndex === 0}
+                className="p-2 hover:bg-natural-accent rounded-full disabled:opacity-20 transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-black font-mono tracking-widest text-natural-green">
+                  {Math.round(((activePageIndex + 1) / data.finalPages.length) * 100)}% FORGED
+                </span>
+                <span className="text-sm font-bold tracking-tighter">
+                  {activePageIndex + 1} of {data.finalPages.length}
+                </span>
+              </div>
+              <button 
+                onClick={nextPage} 
+                disabled={activePageIndex === data.finalPages.length - 1}
+                className="p-2 hover:bg-natural-accent rounded-full disabled:opacity-20 transition-colors"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="w-[1px] h-4 bg-natural-border" />
+            <button 
+              onClick={nextStep}
+              className="px-6 py-2 bg-natural-green text-white rounded-full font-bold text-sm hover:opacity-90 transition-all shadow-lg shadow-natural-green/20"
+            >
+              Export PDF
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Image Panel Overlay */}
@@ -415,11 +550,14 @@ export function Step4Design({ data, updateData, nextStep, prevStep }: StepProps)
   );
 }
 
-function PageRenderer({ page, idx, isDarkMode, updatePage, deletePage, setActiveImagePanel }: any) {
+function PageRenderer({ page, idx, isDarkMode, updatePage, deletePage, setActiveImagePanel, settings }: any) {
   const [isEditingContent, setIsEditingContent] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-
+ 
   if (!page) return null;
+  const headingFont = settings?.headingFont || 'serif italic';
+  const bodyFont = settings?.bodyFont || 'serif';
+
   return (
     <div className="flex-1 flex flex-col h-full relative">
       {/* Page Number */}
@@ -441,7 +579,8 @@ function PageRenderer({ page, idx, isDarkMode, updatePage, deletePage, setActive
         <div className="flex-1 flex flex-col items-center justify-center text-center space-y-8">
            <textarea
             className={cn(
-              "text-6xl font-bold tracking-tighter leading-none bg-transparent text-center resize-none w-full border-none outline-none focus:text-natural-green serif italic transition-colors",
+              "text-6xl font-bold tracking-tighter leading-none bg-transparent text-center resize-none w-full border-none outline-none focus:text-natural-green transition-colors",
+              headingFont,
               isDarkMode ? "text-stone-100" : "text-stone-900"
             )}
             rows={3}
@@ -466,29 +605,40 @@ function PageRenderer({ page, idx, isDarkMode, updatePage, deletePage, setActive
         </div>
       ) : (
         <div className="flex-1 flex flex-col space-y-8 h-full">
-          {isEditingTitle ? (
-            <textarea
-              autoFocus
-              onBlur={() => setIsEditingTitle(false)}
-              className={cn(
-                "text-4xl font-bold tracking-tight bg-transparent resize-none w-full border-none outline-none focus:text-natural-green serif italic transition-colors",
-                isDarkMode ? "text-stone-100" : "text-stone-900"
-              )}
-              rows={2}
-              value={page.title}
-              onChange={(e) => updatePage(page.id, { title: e.target.value })}
-            />
-          ) : (
-            <h1 
-              onClick={() => setIsEditingTitle(true)}
-              className={cn(
-                "text-4xl font-bold tracking-tight serif italic cursor-text hover:text-natural-green transition-colors",
-                isDarkMode ? "text-stone-100" : "text-stone-900"
-              )}
-            >
-              {page.title}
-            </h1>
-          )}
+          <div className="space-y-4">
+            {page.type === 'chapter' && (
+              <div className="text-[10px] font-black text-natural-green uppercase tracking-[0.4em] opacity-40">
+                Chapter {page.chapterIndex + 1}
+              </div>
+            )}
+            
+            {isEditingTitle ? (
+              <textarea
+                autoFocus
+                onBlur={() => setIsEditingTitle(false)}
+                className={cn(
+                  "text-5xl font-bold tracking-tight bg-transparent resize-none w-full border-none outline-none focus:text-natural-green transition-colors leading-[1.1]",
+                  headingFont,
+                  isDarkMode ? "text-stone-100" : "text-stone-900"
+                )}
+                rows={2}
+                value={page.title}
+                onChange={(e) => updatePage(page.id, { title: e.target.value })}
+              />
+            ) : (
+              <h1 
+                onClick={() => setIsEditingTitle(true)}
+                className={cn(
+                  "text-5xl font-bold tracking-tight cursor-text hover:text-natural-green transition-colors leading-[1.1]",
+                  headingFont,
+                  isDarkMode ? "text-stone-100" : "text-stone-900"
+                )}
+              >
+                {page.title}
+              </h1>
+            )}
+            <div className="w-24 h-1 bg-natural-green/10 rounded-full" />
+          </div>
           
           {page.images.length > 0 && (
             <div className="w-full">
@@ -500,13 +650,14 @@ function PageRenderer({ page, idx, isDarkMode, updatePage, deletePage, setActive
             </div>
           )}
 
-          <div className="flex-1 overflow-visible">
+          <div className="flex-1">
             {isEditingContent ? (
               <textarea
                 autoFocus
                 onBlur={() => setIsEditingContent(false)}
                 className={cn(
-                  "w-full h-full text-lg leading-relaxed bg-transparent resize-none border-none outline-none focus:bg-natural-bg/30 rounded-xl p-2 serif transition-all",
+                  "w-full h-full text-lg leading-[1.8] bg-transparent resize-none border-none outline-none focus:bg-natural-bg/30 rounded-xl p-2 transition-all",
+                  bodyFont,
                   isDarkMode ? "text-stone-300" : "text-natural-text/80"
                 )}
                 value={page.content}
@@ -516,12 +667,22 @@ function PageRenderer({ page, idx, isDarkMode, updatePage, deletePage, setActive
               <div 
                 onClick={() => setIsEditingContent(true)}
                 className={cn(
-                  "w-full h-full text-lg leading-relaxed cursor-text prose prose-stone max-w-none prose-headings:serif prose-headings:italic",
+                  "w-full h-full text-lg leading-[1.8] cursor-text prose prose-stone max-w-none prose-blockquote:border-l-natural-green prose-blockquote:bg-natural-bg/10 prose-blockquote:p-6 prose-blockquote:rounded-r-2xl prose-blockquote:not-italic prose-blockquote:font-bold prose-blockquote:text-natural-green/80",
+                  bodyFont,
                   isDarkMode ? "prose-invert text-stone-300" : "text-natural-text/80",
-                  page.type === 'toc' ? "font-mono text-sm leading-loose" : "serif"
+                  page.type === 'toc' ? "font-mono text-sm leading-loose" : bodyFont
                 )}
               >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{page.content}</ReactMarkdown>
+                <div className={cn(
+                  "prose-headings:tracking-tighter",
+                  headingFont === 'font-playfair' ? 'prose-headings:font-playfair prose-headings:italic' : 
+                  headingFont === 'font-outfit' ? 'prose-headings:font-outfit' :
+                  headingFont === 'font-space' ? 'prose-headings:font-space' :
+                  headingFont === 'font-crimson' ? 'prose-headings:font-crimson prose-headings:italic' :
+                  'prose-headings:serif prose-headings:italic'
+                )}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{page.content}</ReactMarkdown>
+                </div>
               </div>
             )}
           </div>
@@ -542,7 +703,8 @@ function ImageBlock({ img, pageId, onOpen }: { img: BookImage, pageId: string, o
     <div 
       onClick={(e) => { e.stopPropagation(); onOpen(); }}
       className={cn(
-        "relative w-full rounded-2xl overflow-hidden cursor-pointer group bg-stone-100 border-2 border-dashed border-stone-200 transition-all hover:border-orange-500",
+        "relative w-full rounded-2xl overflow-hidden cursor-pointer group bg-stone-50 transition-all hover:bg-stone-100",
+        !img.url && "border-2 border-dashed border-stone-200 hover:border-natural-green/50 hover:bg-natural-bg/50",
         aspectClasses[img.aspect] || 'aspect-video'
       )}
     >
@@ -550,8 +712,13 @@ function ImageBlock({ img, pageId, onOpen }: { img: BookImage, pageId: string, o
         <img src={img.url} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8 text-center">
-           <ImageIcon className="w-12 h-12 text-stone-300 group-hover:text-orange-500 transition-colors" />
-           <p className="text-[10px] font-black text-stone-300 uppercase tracking-widest">{img.aspect} MASTER ASSET</p>
+           <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center group-hover:scale-110 group-hover:shadow-xl transition-all border border-stone-100">
+             <ImageIcon className="w-8 h-8 text-stone-300 group-hover:text-natural-green transition-colors" />
+           </div>
+           <div className="space-y-1">
+             <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Empty Asset Slot</p>
+             <p className="text-[9px] font-bold text-stone-300 uppercase tracking-widest">{img.aspect} Resolution</p>
+           </div>
         </div>
       )}
       <div className="absolute inset-0 bg-stone-900/0 group-hover:bg-stone-900/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">

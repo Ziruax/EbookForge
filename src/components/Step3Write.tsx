@@ -26,7 +26,9 @@ export function Step3Write({ data, updateData, nextStep, prevStep }: StepProps) 
 
   const currentContent = data.chapters[currentIndex];
   const wordCount = currentContent?.split(/\s+/).length || 0;
-  const targetWords = 900;
+  
+  // Calculate dynamic word target: (pages - 10) * 250 / chapters
+  const targetWords = data.outline ? Math.floor((data.pages - 10) * 250 / data.outline.outline.length) : 900;
 
   const handleGenerate = async () => {
     if (!currentChapter) return;
@@ -63,7 +65,8 @@ export function Step3Write({ data, updateData, nextStep, prevStep }: StepProps) 
       previousSummary: index > 0 ? (currentSummaries[index - 1] || "") : "",
       isIdeaMode: data.mode === 'IDEA',
       title: data.title,
-      audience: data.audience
+      audience: data.audience,
+      totalPages: data.pages
     });
   };
 
@@ -100,89 +103,77 @@ export function Step3Write({ data, updateData, nextStep, prevStep }: StepProps) 
   };
 
   const handleFinishWriting = () => {
-    // 1. Generate TOC with professional formatting
-    let currentPage = 5; // Start after Cover, Copyright, TOC, Intro
-    const tocItems = chapters.map((ch, i) => {
-      const chapterNum = (i + 1).toString().padStart(2, '0');
-      const startPage = currentPage;
-      
-      // Calculate how many pages this chapter will take
+    // 1. First, process all chapters to determine how many pages each one takes
+    // We split by ## headings primarily for cleaner page breaks
+    const processedChapters = chapters.map((ch, i) => {
       const rawContent = data.chapters[i] || "";
-      const paragraphs = rawContent.split('\n\n').filter(p => p.trim());
-      const targetPagesPerChapter = Math.max(1, Math.floor((data.pages - 10) / chapters.length));
+      // Split by ## headings
+      const sections = rawContent.split(/(?=##\s)/).filter(s => s.trim());
+      return {
+        ...ch,
+        sections
+      };
+    });
+
+    // 2. Initialize pagination
+    let currentPageNum = 5; // Start after Cover (1), Copyright (2), TOC (3), Intro (4)
+    const tocEntries: string[] = [];
+    const finalPageObjects: any[] = [];
+
+    processedChapters.forEach((ch, i) => {
+      const startPage = currentPageNum;
+      const chapterNum = (i + 1).toString().padStart(2, '0');
       
-      currentPage += targetPagesPerChapter;
-      
-      return `| ${chapterNum} | ${ch.title} | PAGE ${startPage} |`;
+      ch.sections.forEach((section, sIdx) => {
+        finalPageObjects.push({
+          id: `ch_${i}_p_${sIdx}`,
+          type: 'chapter',
+          chapterIndex: i,
+          title: sIdx === 0 ? ch.title : `${ch.title} (Cont.)`,
+          content: section,
+          wordCount: section.split(/\s+/).length,
+          images: sIdx === 0 ? [{ id: `img_${i}`, aspect: '16:9', prompt: data.imagePrompts[i] || "" }] : []
+        });
+        currentPageNum++;
+      });
+
+      tocEntries.push(`| ${chapterNum} | ${ch.title} | PAGE ${startPage} |`);
     });
 
     const tocHeader = "| # | CHAPTER TITLE | LOCATION |\n|---|:---|---:|\n";
-    const tocContent = `## Table of Contents\n\n${tocHeader}${tocItems.join('\n')}\n\n*Note: High-fidelity pagination managed by AI Forge Studio v1.2*`;
+    const tocContent = `## Guide Contents\n\n${tocHeader}${tocEntries.join('\n')}\n\n*Note: Precision typography applied via Forge V3*`;
     
-    // 2. Generate Resources
-    const resources = [
-      "Gemini AI Forge - Intelligent Content System",
-      "EbookForge Studio Assets",
-      "Primary Research & Case Studies",
-      ...chapters.map(ch => ch.mechanism)
-    ].map(m => `* ${m}`).join('\n');
+    // Create resources content
+    const resourcesContent = `## Strategic Resources\n\nListed below are the core frameworks and unique mechanisms introduced in this volume for your immediate application:\n\n` + 
+      chapters.map(ch => `* **${ch.mechanism}**: ${ch.outcome}`).join('\n') + 
+      `\n\n### Supplemental Tools\n* Implementation Checklist V1.2\n* Strategic Outcome Planner\n* The ${data.title} Knowledge Graph`;
 
-    // 3. Page Distribution Plan
-    const pages: any[] = [];
+    // 3. Assemble finalPages
+    const finalPages: any[] = [];
     
-    data.finalPages.forEach(page => {
-      if (page.type === 'toc') {
-        pages.push({ ...page, content: tocContent });
-      } else if (page.type === 'resources') {
-        pages.push({ ...page, content: resources });
-      } else if (page.type === 'chapter' && page.chapterIndex !== undefined) {
-        const rawContent = data.chapters[page.chapterIndex];
-        const prompt = data.imagePrompts[page.chapterIndex] || page.images[0]?.prompt;
-        
-        if (rawContent) {
-          // Robust splitting to reach target page count
-          const paragraphs = rawContent.split('\n\n').filter(p => p.trim());
-          const targetPagesPerChapter = Math.max(1, Math.floor((data.pages - 10) / chapters.length));
-          
-          if (targetPagesPerChapter > 1 && paragraphs.length > 2) {
-             const chunkSize = Math.max(1, Math.floor(paragraphs.length / targetPagesPerChapter));
-             for (let i = 0; i < targetPagesPerChapter; i++) {
-               const start = i * chunkSize;
-               const end = (i === targetPagesPerChapter - 1) ? paragraphs.length : (i + 1) * chunkSize;
-               const chunk = paragraphs.slice(start, end).join('\n\n');
-               
-               if (chunk.trim()) {
-                 pages.push({
-                   ...page,
-                   id: `${page.id}_part_${i}`,
-                   title: i === 0 ? page.title : `${page.title} (Continued)`,
-                   content: chunk,
-                   wordCount: chunk.split(/\s+/).length,
-                   images: i === 0 ? page.images.map(img => ({ ...img, prompt })) : []
-                 });
-               }
-             }
-          } else {
-             pages.push({ 
-               ...page, 
-               content: rawContent, 
-               wordCount: rawContent.split(/\s+/).length, 
-               images: page.images.map(img => ({ ...img, prompt })) 
-             });
-          }
-        } else {
-          pages.push(page);
-        }
-      } else {
-        pages.push(page);
-      }
-    });
+    // Find template pages
+    const coverPage = data.finalPages.find(p => p.type === 'cover');
+    const copyrightPage = data.finalPages.find(p => p.type === 'copyright');
+    const tocPagePlaceholder = data.finalPages.find(p => p.type === 'toc');
+    const introPage = data.finalPages.find(p => p.type === 'intro');
+    const authorPage = data.finalPages.find(p => p.type === 'author');
+    const resourcesPagePlaceholder = data.finalPages.find(p => p.type === 'resources');
+    const ctaPage = data.finalPages.find(p => p.type === 'cta');
 
-    // Final sanity check to ensure we didn't lose core pages
-    const hasCover = pages.some(p => p.type === 'cover');
-    if (!hasCover && data.finalPages[0]) pages.unshift(data.finalPages[0]);
+    if (coverPage) finalPages.push(coverPage);
+    if (copyrightPage) finalPages.push(copyrightPage);
+    if (tocPagePlaceholder) finalPages.push({ ...tocPagePlaceholder, content: tocContent });
+    if (introPage) finalPages.push(introPage);
+    
+    // Add all chapter pages
+    finalPageObjects.forEach(p => finalPages.push(p));
 
-    updateData({ finalPages: pages });
+    // Add back pages
+    if (authorPage) finalPages.push(authorPage);
+    if (resourcesPagePlaceholder) finalPages.push({ ...resourcesPagePlaceholder, content: resourcesContent });
+    if (ctaPage) finalPages.push(ctaPage);
+
+    updateData({ finalPages });
     nextStep();
   };
 

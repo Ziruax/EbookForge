@@ -42,13 +42,34 @@ async function startServer() {
       const client = getGenAI(req);
       const { title, audience, pages, template, tone, guidance } = req.body;
       
-      let prompt = `Create a JSON outline for a ${pages} page book titled '${title}' for ${audience} using template '${template}' with a ${tone} selling tone.`;
+      // Dynamic chapter count based on page count
+      // 20 pages -> 3-4 chapters
+      // 60 pages -> 6-8 chapters
+      // 200 pages -> 12-15 chapters
+      let targetChapters = 4;
+      if (pages >= 150) targetChapters = 15;
+      else if (pages >= 100) targetChapters = 10;
+      else if (pages >= 50) targetChapters = 7;
+
+      let prompt = `You are a world-class book strategist. Create a high-converting JSON outline for a ${pages} page book.
+      Title: "${title}"
+      Target Audience: "${audience}"
+      Template: "${template}"
+      Tone: "${tone}"
+      
+      Requirements:
+      - Create exactly ${targetChapters} robust chapters.
+      - Each chapter must follow a logical ascension towards the final transformation.
+      - "problem": The specific tactical pain point this chapter eliminates.
+      - "mechanism": The unique, named process or tool used to solve the problem.
+      - "outcome": The specific, measurable result for the reader.
+      - "keyInsight": A "lightbulb moment" quote or realization that changes the reader's paradigm.`;
       
       if (guidance) {
         prompt += `\n\nUSER SPECIFIC GUIDANCE FOR IMPROVEMENT: "${guidance}"\nPlease incorporate this feedback into the new outline.`;
       }
  
-      prompt += `\n\nDeliver ONE transformation. 
+      prompt += `\n\nDeliver ONE transformation statement. 
       Return only a JSON object with this structure:
       {
         "transformation": "string",
@@ -58,7 +79,8 @@ async function startServer() {
             "title": "Chapter Title",
             "problem": "Problem solved",
             "mechanism": "Unique mechanism name",
-            "outcome": "Outcome promise"
+            "outcome": "Outcome promise",
+            "keyInsight": "The specific lightbulb moment"
           }
         ]
       }
@@ -105,45 +127,49 @@ async function startServer() {
       } = req.body;
       
       let prompt = "";
+      // Calculate dynamic word target: (total pages - 10 for front/back) * 250 words per page / total chapters
+      const wordTarget = Math.floor(((req.body.totalPages || 20) - 10) * 250 / totalChapters);
+
       if (isIdeaMode) {
-        prompt = `You are an expert teacher and direct response copywriter. Write Chapter ${chapterIndex + 1} of ${totalChapters}: "${chapterTitle}".
-        Overall Book Context: Title "${title}", Audience "${audience}".
-        Previous Chapter Summary: ${previousSummary || "This is the first chapter."}
-        Chapter Goal: Solve the problem of ${outline[chapterIndex].problem} with mechanism "${mechanism}".
+        prompt = `You are a master ghostwriter and elite teacher. Write Chapter ${chapterIndex + 1} of ${totalChapters}: "${chapterTitle}".
+        Book Title: "${title}"
+        Target Audience: "${audience}"
+        Target word count: ${wordTarget} words.
         
-        Follow this strict 8-part structure:
-        1) Open with the painful problem and its real cost in one paragraph.
-        2) Introduce the unique mechanism [${mechanism}] and why it works.
-        3) Teach a 3 to 5 step process.
-        4) Include one real example with a specific number or result.
-        5) Add one copy-paste template in a block labeled TEMPLATE.
-        6) Add a 3-point checklist labeled CHECKLIST.
-        7) Add one costly mistake labeled MISTAKE TO AVOID.
-        8) End with a 10 minute quick win action.
+        Previous Context: ${previousSummary || "This is the start of the book."}
+        Chapter Mission: Solve the problem of ${outline[chapterIndex].problem} using "${mechanism}".
+        The "Lightbulb Moment" to deliver: "${outline[chapterIndex].keyInsight || 'A new way of seeing the problem'}".
         
-        Constraints:
-        - Max 900 words
-        - Conversational, second person
-        - No fluff, no generic advice
-        - Format with clear headings for each of the 8 parts.
-        - Return the content as markdown.`;
+        Structure your narrative using the "Explain -> Example -> Application" pattern:
+        1) ## THE PROBLEM: Open with a visceral description of the pain readers feel and its hidden costs.
+        2) ## THE BIG SHIFT: Introduce "${mechanism}" and the key insight that changes everything.
+        3) ## THE ARCHITECTURE: Teach the 3-5 step process with deep logic.
+        4) ## THE PROOF: A detailed case study or example with specific data/numbers.
+        5) ## THE TOOLKIT: A copy-paste template (labeled TEMPLATE).
+        6) ## THE RADAR: A 3-point checklist of what to watch for (labeled CHECKLIST).
+        7) ## THE TRAP: One common mistake that kills progress (labeled MISTAKE TO AVOID).
+        8) ## THE MOMENTUM: A 10-minute "Quick Win" action step.
+        
+        Style: Punchy, authoritative, second-person "You". No fluff. Use bolding for emphasis.`;
       } else {
         const userDraft = req.body.userDraft || "";
-        prompt = `You are an expert teacher and direct response copywriter. Rewrite user's draft for Chapter ${chapterIndex + 1}: ${chapterTitle} using the following 8 part structure:
-        1) Open with the painful problem and its real cost in one paragraph.
-        2) Introduce the unique mechanism [${mechanism}] and why it works.
-        3) Teach a 3 to 5 step process.
-        4) Include one real example with a specific number or result.
-        5) Add one copy-paste template in a box labeled TEMPLATE.
-        6) Add a 3-point checklist labeled CHECKLIST.
-        7) Add one costly mistake labeled MISTAKE TO AVOID.
-        8) End with a 10 minute quick win action.
-        Keep their stories, add the missing template, checklist, example with number, and mistake.
+        prompt = `You are an elite editor. Rewrite this draft for Chapter ${chapterIndex + 1}: ${chapterTitle} into a professional masterwork.
+        Target word count: ${wordTarget} words.
         
-        Draft to rewrite:
-        ${userDraft}
+        Maintain the reader's stories but enforce this structure:
+        1) ## THE PROBLEM (Visceral pain)
+        2) ## THE BIG SHIFT (Deep logic of "${mechanism}")
+        3) ## THE ARCHITECTURE (Step-by-step teaching)
+        4) ## THE PROOF (Specific results/data)
+        5) ## THE TOOLKIT (TEMPLATE)
+        6) ## THE RADAR (CHECKLIST)
+        7) ## THE TRAP (MISTAKE TO AVOID)
+        8) ## THE MOMENTUM (10-min action)
         
-        Return the content as markdown.`;
+        Incorporate this Key Insight: "${outline[chapterIndex].keyInsight || 'A new paradigm'}".
+        
+        Draft to transform:
+        ${userDraft}`;
       }
 
       const chapterResponse = await client.models.generateContent({

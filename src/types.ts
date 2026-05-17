@@ -4,6 +4,7 @@ export interface ChapterOutline {
   problem: string;
   mechanism: string;
   outcome: string;
+  keyInsight?: string;
 }
 
 export interface BookOutline {
@@ -31,6 +32,11 @@ export interface PageContent {
   images: BookImage[];
 }
 
+export interface BookSettings {
+  headingFont: string;
+  bodyFont: string;
+}
+
 export interface BookData {
   title: string;
   audience: string;
@@ -45,6 +51,7 @@ export interface BookData {
   finalPages: PageContent[];
   currentStep: number;
   lastSaved: number;
+  settings?: BookSettings;
 }
 
 export const TEMPLATES = ['How-To Guide', 'Lead Magnet', 'Authority Book'];

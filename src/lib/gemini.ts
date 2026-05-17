@@ -42,6 +42,7 @@ export async function generateChapter(data: {
   title: string;
   audience: string;
   userDraft?: string;
+  totalPages?: number;
 }) {
   const response = await fetch("/api/generate-chapter", {
     method: "POST",

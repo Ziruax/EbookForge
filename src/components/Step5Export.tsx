@@ -4,7 +4,6 @@ import { motion } from 'motion/react';
 import { CheckCircle2, Download, FileText, ArrowLeft, Loader2, FolderArchive, Zap, Sparkles, BookOpen } from 'lucide-react';
 import { cn } from '../lib/utils';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
 
 interface StepProps {
@@ -18,87 +17,250 @@ export function Step5Export({ data, updateData, prevStep }: StepProps) {
   const [isExportingPsd, setIsExportingPsd] = useState(false);
   const [exportComplete, setExportComplete] = useState(false);
 
+  const isHeadingSerif = !data.settings || data.settings.headingFont.includes('serif') || data.settings.headingFont.includes('playfair') || data.settings.headingFont.includes('crimson');
+  const isBodySerif = !data.settings || data.settings.bodyFont.includes('serif') || data.settings.bodyFont.includes('lora');
+  
+  const headingPDF = isHeadingSerif ? 'times' : 'helvetica';
+  const bodyPDF = isBodySerif ? 'times' : 'helvetica';
+
   const generatePDF = async () => {
     setIsExportingPdf(true);
     try {
       const doc = new jsPDF('p', 'mm', 'a4');
+      const margin = 25;
+      const topMargin = 30;
+      const bottomMargin = 25;
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
+      const contentWidth = pageWidth - (margin * 2);
+      
+      const addPageNumber = (pageNumber: number) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(180, 180, 180);
+        doc.text(`PAGE ${pageNumber}`, pageWidth - margin, bottomMargin / 2, { align: 'right' });
+      };
 
-      // Better rendering container
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.width = '210mm';
-      document.body.appendChild(container);
+      const renderMarkdown = async (content: string, startY: number, pageNum: number) => {
+        let cursorY = startY;
+        let currentPage = pageNum;
+        
+        const lines = content.split('\n');
+        
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i].trim();
+          if (!line && !lines[i].startsWith(' ')) {
+            cursorY += 5;
+            continue;
+          }
 
-      // Utility for basic markdown to HTML for PDF
-      const mdToHtml = (md: string) => {
-        return md
-          .replace(/^# (.*$)/gim, '<h1 style="font-family: serif; font-style: italic; font-size: 32pt; margin-top: 40pt; margin-bottom: 20pt;">$1</h1>')
-          .replace(/^## (.*$)/gim, '<h2 style="font-family: serif; font-size: 24pt; margin-top: 30pt; margin-bottom: 15pt;">$1</h2>')
-          .replace(/^### (.*$)/gim, '<h3 style="font-family: serif; font-size: 18pt; margin-top: 20pt; margin-bottom: 10pt;">$1</h3>')
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*(.*?)\*/g, '<em>$1</em>')
-          .replace(/\n/g, '<br/>')
-          .replace(/CHECKLIST/g, '<span style="color: #059669; font-weight: bold; border-bottom: 2px solid #059669;">CHECKLIST</span>')
-          .replace(/TEMPLATE/g, '<span style="background: #f0fdf4; padding: 10px; border-left: 4px solid #059669; display: block; margin: 20px 0;">TEMPLATE</span>')
-          .replace(/MISTAKE TO AVOID/g, '<span style="color: #dc2626; font-weight: bold;">MISTAKE TO AVOID</span>');
+          // Page Check
+          if (cursorY > pageHeight - bottomMargin - 10) {
+            doc.addPage();
+            currentPage++;
+            addPageNumber(currentPage);
+            cursorY = topMargin;
+          }
+
+          // Headings
+          if (line.startsWith('## ')) {
+            doc.setFont(headingPDF, isHeadingSerif ? 'italic' : 'bold');
+            doc.setFontSize(22);
+            doc.setTextColor(20, 20, 20);
+            cursorY += 10;
+            const text = line.replace('## ', '');
+            const splitText = doc.splitTextToSize(text, contentWidth);
+            doc.text(splitText, margin, cursorY);
+            cursorY += (splitText.length * 10) + 5;
+            // Aesthetic underline
+            doc.setDrawColor(5, 150, 105, 0.2);
+            doc.line(margin, cursorY - 2, margin + 20, cursorY - 2);
+            cursorY += 5;
+            continue;
+          }
+
+          if (line.startsWith('### ')) {
+            doc.setFont(headingPDF, isHeadingSerif ? 'bolditalic' : 'bold');
+            doc.setFontSize(16);
+            doc.setTextColor(40, 40, 40);
+            cursorY += 8;
+            const text = line.replace('### ', '');
+            const splitText = doc.splitTextToSize(text, contentWidth);
+            doc.text(splitText, margin, cursorY);
+            cursorY += (splitText.length * 8) + 4;
+            continue;
+          }
+
+          // Horizontal Rule
+          if (line === '---' || line === '***') {
+            doc.setDrawColor(230, 230, 230);
+            doc.line(margin, cursorY + 5, pageWidth - margin, cursorY + 5);
+            cursorY += 15;
+            continue;
+          }
+
+          // List Items
+          if (line.startsWith('* ') || line.startsWith('- ')) {
+            doc.setFont(bodyPDF, 'normal');
+            doc.setFontSize(11);
+            doc.setTextColor(60, 60, 60);
+            const text = "• " + line.substring(2);
+            const splitText = doc.splitTextToSize(text, contentWidth - 5);
+            doc.text(splitText, margin + 5, cursorY);
+            cursorY += (splitText.length * 6) + 2;
+            continue;
+          }
+
+          const numMatch = line.match(/^\d+\.\s/);
+          if (numMatch) {
+            doc.setFont(bodyPDF, 'normal');
+            doc.setFontSize(11);
+            doc.setTextColor(60, 60, 60);
+            const splitText = doc.splitTextToSize(line, contentWidth - 5);
+            doc.text(splitText, margin + 5, cursorY);
+            cursorY += (splitText.length * 6) + 2;
+            continue;
+          }
+
+          // Special Keywords
+          if (line.includes('CHECKLIST')) {
+             doc.setFont('helvetica', 'bold');
+             doc.setFontSize(9);
+             doc.setTextColor(5, 150, 105);
+             doc.text('CHECKLIST', margin, cursorY);
+             doc.setFont(bodyPDF, 'normal');
+             doc.setFontSize(11);
+             doc.setTextColor(60, 60, 60);
+             line = line.replace('CHECKLIST', '');
+          }
+
+          if (line.includes('MISTAKE TO AVOID')) {
+             doc.setFont('helvetica', 'bold');
+             doc.setFontSize(9);
+             doc.setTextColor(220, 38, 38);
+             doc.text('CRITICAL ERROR:', margin, cursorY);
+             cursorY += 5;
+             doc.setFont(bodyPDF, 'normal');
+             doc.setFontSize(11);
+             doc.setTextColor(60, 60, 60);
+             line = line.replace('MISTAKE TO AVOID', '');
+          }
+
+          // Blockquotes
+          if (line.startsWith('> ')) {
+            doc.setDrawColor(5, 150, 105);
+            doc.setLineWidth(1);
+            const text = line.substring(2);
+            const splitText = doc.splitTextToSize(text, contentWidth - 15);
+            doc.line(margin, cursorY - 4, margin, cursorY + (splitText.length * 6));
+            doc.setFont(bodyPDF, 'italic');
+            doc.setFontSize(11);
+            doc.setTextColor(80, 80, 80);
+            doc.text(splitText, margin + 8, cursorY);
+            cursorY += (splitText.length * 6) + 6;
+            continue;
+          }
+
+          // Standard Paragraph
+          doc.setFont(bodyPDF, 'normal');
+          doc.setFontSize(11);
+          doc.setTextColor(60, 60, 60);
+          const splitText = doc.splitTextToSize(line, contentWidth);
+          doc.text(splitText, margin, cursorY);
+          cursorY += (splitText.length * 7) + 2;
+        }
+
+        return { cursorY, currentPage };
       };
 
       for (let i = 0; i < data.finalPages.length; i++) {
         const page = data.finalPages[i];
-        const pageEl = document.createElement('div');
-        pageEl.style.width = '210mm';
-        pageEl.style.minHeight = '297mm';
-        pageEl.style.padding = '80px';
-        pageEl.style.backgroundColor = '#fff';
-        pageEl.style.color = '#1c1917';
-        pageEl.style.display = 'flex';
-        pageEl.style.flexDirection = 'column';
-        pageEl.className = 'export-page';
+        if (i > 0) doc.addPage();
+        
+        addPageNumber(i + 1);
 
         if (page.type === 'cover') {
-           pageEl.innerHTML = `
-            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border: 20px solid #f5f5f4; padding: 40px;">
-              <h1 style="font-family: serif; font-style: italic; font-size: 60pt; line-height: 1; margin-bottom: 20pt; font-weight: 900;">${page.title}</h1>
-              <h2 style="font-family: sans-serif; font-size: 14pt; color: #78716c; letter-spacing: 0.3em; text-transform: uppercase; font-weight: 500;">${page.subtitle || ''}</h2>
-              <div style="margin-top: 60pt; font-family: serif; font-style: italic; color: #059669; font-size: 18pt;">A Gemini Masterpiece</div>
-            </div>
-           `;
+          // Decorative Border
+          doc.setDrawColor(240, 240, 240);
+          doc.setLineWidth(10);
+          doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
+
+          doc.setFont(headingPDF, isHeadingSerif ? 'italic' : 'bold');
+          doc.setFontSize(54);
+          doc.setTextColor(20, 20, 20);
+          const titleLines = doc.splitTextToSize(page.title, contentWidth);
+          doc.text(titleLines, pageWidth / 2, pageHeight / 2 - 20, { align: 'center' });
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          doc.setTextColor(120, 120, 120);
+          doc.text((page.subtitle || '').toUpperCase(), pageWidth / 2, pageHeight / 2 + 20, { align: 'center', charSpace: 2 });
+
+          doc.setFont(headingPDF, 'italic');
+          doc.setFontSize(14);
+          doc.setTextColor(5, 150, 105);
+          doc.text('FORGED AT THE STUDIO', pageWidth / 2, pageHeight - 40, { align: 'center' });
+
+        } else if (page.type === 'copyright' || page.type === 'intro' || page.type === 'author' || page.type === 'cta' || page.type === 'resources' || page.type === 'toc') {
+          doc.setFont(headingPDF, isHeadingSerif ? 'italic' : 'bold');
+          doc.setFontSize(28);
+          doc.setTextColor(20, 20, 20);
+          doc.text(page.title, margin, topMargin);
+          
+          doc.setDrawColor(230, 230, 230);
+          doc.setLineWidth(0.5);
+          doc.line(margin, topMargin + 5, pageWidth - margin, topMargin + 5);
+
+          await renderMarkdown(page.content, topMargin + 20, i + 1);
         } else {
-          pageEl.innerHTML = `
-            <div style="font-family: serif; position: relative; height: 100%;">
-              <div style="position: absolute; top: -40px; right: 0; font-family: monospace; font-size: 8pt; color: #d6d3d1;">PAGE ${i + 1}</div>
-              <h1 style="font-family: serif; font-style: italic; font-size: 28pt; font-weight: 800; border-bottom: 1px solid #e7e5e4; padding-bottom: 20px; margin-bottom: 40px;">${page.title}</h1>
-              <div style="font-size: 13pt; line-height: 1.8; color: #444; font-family: serif;">${mdToHtml(page.content)}</div>
-            </div>
-          `;
+          // Chapter Page
+          if (page.title.includes('(Cont.)')) {
+            doc.setFont(headingPDF, 'italic');
+            doc.setFontSize(14);
+            doc.setTextColor(150, 150, 150);
+            doc.text(page.title, margin, topMargin);
+          } else {
+            // Chapter Header
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(5, 150, 105);
+            doc.text(`CHAPTER ${(page.chapterIndex + 1).toString().padStart(2, '0')}`, margin, topMargin - 10);
+            
+            doc.setFont(headingPDF, isHeadingSerif ? 'italic' : 'bold');
+            doc.setFontSize(32);
+            doc.setTextColor(20, 20, 20);
+            const titleSplit = doc.splitTextToSize(page.title, contentWidth);
+            doc.text(titleSplit, margin, topMargin + 5);
+            
+            doc.setDrawColor(5, 150, 105, 0.3);
+            doc.setLineWidth(1);
+            doc.line(margin, topMargin + (titleSplit.length * 12) + 5, margin + 30, topMargin + (titleSplit.length * 12) + 5);
+          }
+
+          // Handle Images
+          let startY = topMargin + 30;
+          if (page.images && page.images.length > 0 && page.images[0].url && !page.title.includes('(Cont.)')) {
+             try {
+                // Approximate aspect ratio box
+                const img = page.images[0];
+                const imgWidth = contentWidth;
+                const imgHeight = imgWidth * (9/16);
+                doc.addImage(img.url, 'PNG', margin, startY, imgWidth, imgHeight);
+                startY += imgHeight + 15;
+             } catch (e) {
+                console.warn("Failed to add image to PDF", e);
+             }
+          }
+
+          await renderMarkdown(page.content, startY, i + 1);
         }
-
-        container.appendChild(pageEl);
-        
-        // Optimized capture
-        const canvas = await html2canvas(pageEl, { 
-          scale: 1.5,
-          useCORS: true,
-          logging: false
-        });
-        const imgData = canvas.toDataURL('image/jpeg', 0.85);
-
-        if (i > 0) doc.addPage();
-        doc.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight);
-        
-        // Remove from DOM early to save memory
-        container.removeChild(pageEl);
       }
 
-      doc.save(`${data.title.replace(/\s+/g, '_')}_Final_Edition.pdf`);
-      document.body.removeChild(container);
+      doc.save(`${data.title.replace(/\s+/g, '_')}_Master_Forge_V3.pdf`);
       setExportComplete(true);
     } catch (err) {
       console.error(err);
-      alert("Failed to generate PDF. Try refreshing if the book is very long.");
+      alert("Failed to generate vector PDF. Use the Professional ZIP for raw assets.");
     } finally {
       setIsExportingPdf(false);
     }
