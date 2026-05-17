@@ -52,6 +52,17 @@ export interface BookData {
   currentStep: number;
   lastSaved: number;
   settings?: BookSettings;
+  llmSettings?: {
+    provider: 'gemini' | 'openrouter' | 'groq' | 'nvidia';
+    geminiKey?: string;
+    geminiModel?: string;
+    openrouterKey?: string;
+    openrouterModel?: string;
+    groqKey?: string;
+    groqModel?: string;
+    nvidiaKey?: string;
+    nvidiaModel?: string;
+  };
 }
 
 export const TEMPLATES = ['How-To Guide', 'Lead Magnet', 'Authority Book'];

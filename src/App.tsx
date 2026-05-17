@@ -12,6 +12,14 @@ import confetti from 'canvas-confetti';
 
 const STORAGE_KEY = 'ebookforge_data';
 const API_KEY_STORAGE = 'gemini_api_key';
+const GEMINI_MODEL_STORAGE = 'gemini_model';
+const LLM_PROVIDER_STORAGE = 'llm_provider';
+const OR_KEY_STORAGE = 'openrouter_api_key';
+const OR_MODEL_STORAGE = 'openrouter_model';
+const GROQ_KEY_STORAGE = 'groq_api_key';
+const GROQ_MODEL_STORAGE = 'groq_model';
+const NV_KEY_STORAGE = 'nvidia_api_key';
+const NV_MODEL_STORAGE = 'nvidia_model';
 
 const initialData: BookData = {
   title: '',
@@ -33,6 +41,19 @@ export default function App() {
   const [isResuming, setIsResuming] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
   const [apiKey, setApiKey] = useState(localStorage.getItem(API_KEY_STORAGE) || '');
+  const [geminiModel, setGeminiModel] = useState(localStorage.getItem(GEMINI_MODEL_STORAGE) || 'gemini-2.0-flash');
+  const [llmProvider, setLlmProvider] = useState<'gemini' | 'openrouter' | 'groq' | 'nvidia'>((localStorage.getItem(LLM_PROVIDER_STORAGE) as any) || 'gemini');
+  const [orKey, setOrKey] = useState(localStorage.getItem(OR_KEY_STORAGE) || '');
+  const [orModel, setOrModel] = useState(localStorage.getItem(OR_MODEL_STORAGE) || '');
+  const [groqKey, setGroqKey] = useState(localStorage.getItem(GROQ_KEY_STORAGE) || '');
+  const [groqModel, setGroqModel] = useState(localStorage.getItem(GROQ_MODEL_STORAGE) || 'llama-3.1-8b-instant');
+  const [nvKey, setNvKey] = useState(localStorage.getItem(NV_KEY_STORAGE) || '');
+  const [nvModel, setNvModel] = useState(localStorage.getItem(NV_MODEL_STORAGE) || '');
+  const [nvModels, setNvModels] = useState<string[]>([]);
+  const [fetchingNvModels, setFetchingNvModels] = useState(false);
+  const [nvStatus, setNvStatus] = useState('');
+  const [orModels, setOrModels] = useState<any[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   // Load data on mount
@@ -51,6 +72,119 @@ export default function App() {
     setApiKey(val);
     localStorage.setItem(API_KEY_STORAGE, val);
   };
+
+  const handleGeminiModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setGeminiModel(val);
+    localStorage.setItem(GEMINI_MODEL_STORAGE, val);
+  };
+
+  const handleLlmProviderChange = (provider: 'gemini' | 'openrouter' | 'groq' | 'nvidia') => {
+    setLlmProvider(provider);
+    localStorage.setItem(LLM_PROVIDER_STORAGE, provider);
+  };
+
+  const handleOrKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setOrKey(val);
+    localStorage.setItem(OR_KEY_STORAGE, val);
+  };
+
+  const handleOrModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setOrModel(val);
+    localStorage.setItem(OR_MODEL_STORAGE, val);
+  };
+
+  const handleGroqKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setGroqKey(val);
+    localStorage.setItem(GROQ_KEY_STORAGE, val);
+  };
+
+  const handleGroqModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setGroqModel(val);
+    localStorage.setItem(GROQ_MODEL_STORAGE, val);
+  };
+
+  const handleNvKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNvKey(val);
+    localStorage.setItem(NV_KEY_STORAGE, val);
+  };
+
+  const handleNvModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setNvModel(val);
+    localStorage.setItem(NV_MODEL_STORAGE, val);
+  };
+
+  const fetchNvModels = async () => {
+    if (!nvKey.startsWith('nvapi-')) {
+      setNvModels([]);
+      setNvStatus('Invalid key format');
+      return;
+    }
+
+    setFetchingNvModels(true);
+    setNvStatus('Detecting models...');
+    try {
+      const response = await fetch('https://integrate.api.nvidia.com/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${nvKey}`,
+          'Accept': 'application/json'
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch models');
+      const data = await response.json();
+      const detectedIds = data.data.map((m: any) => m.id).sort();
+      setNvModels(detectedIds);
+      setNvStatus(`Found ${detectedIds.length} models`);
+      if (detectedIds.length > 0 && !nvModel) {
+        setNvModel(detectedIds[0]);
+        localStorage.setItem(NV_MODEL_STORAGE, detectedIds[0]);
+      }
+    } catch (err) {
+      console.error(err);
+      setNvStatus('Failed to load catalog');
+    } finally {
+      setFetchingNvModels(false);
+    }
+  };
+
+  const fetchFreeModels = async () => {
+    setFetchingModels(true);
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/models");
+      const data = await res.json();
+      
+      const freeModels = data.data.filter(
+        (model: any) => 
+          parseFloat(model.pricing.prompt) === 0 && 
+          parseFloat(model.pricing.completion) === 0
+      );
+
+      setOrModels(freeModels);
+      if (freeModels.length > 0 && !orModel) {
+        setOrModel(freeModels[0].id);
+        localStorage.setItem(OR_MODEL_STORAGE, freeModels[0].id);
+      }
+    } catch (error) {
+      console.error("Error fetching models:", error);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showSettings && llmProvider === 'openrouter' && orModels.length === 0) {
+      fetchFreeModels();
+    }
+    if (showSettings && llmProvider === 'nvidia' && nvModels.length === 0 && nvKey) {
+      fetchNvModels();
+    }
+  }, [showSettings, llmProvider, nvKey]);
 
   // Autosave interval
   useEffect(() => {
@@ -206,25 +340,211 @@ export default function App() {
                       <div className="w-8 h-8 bg-natural-green/10 rounded-lg flex items-center justify-center">
                         <Key className="text-natural-green w-4 h-4" />
                       </div>
-                      <h3 className="font-bold text-sm tracking-tight">Gemini API Configuration</h3>
+                      <h3 className="font-bold text-sm tracking-tight">AI Provider Configuration</h3>
+                    </div>
+
+                    <div className="flex bg-gray-100 p-1 rounded-xl mb-4">
+                      <button 
+                        onClick={() => handleLlmProviderChange('gemini')}
+                        className={cn(
+                          "flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+                          llmProvider === 'gemini' ? "bg-white text-natural-green shadow-sm" : "text-gray-400 hover:text-gray-600"
+                        )}
+                      >
+                        Gemini
+                      </button>
+                      <button 
+                        onClick={() => handleLlmProviderChange('openrouter')}
+                        className={cn(
+                          "flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+                          llmProvider === 'openrouter' ? "bg-white text-natural-green shadow-sm" : "text-gray-400 hover:text-gray-600"
+                        )}
+                      >
+                        OpenRouter
+                      </button>
+                      <button 
+                        onClick={() => handleLlmProviderChange('groq')}
+                        className={cn(
+                          "flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+                          llmProvider === 'groq' ? "bg-white text-natural-green shadow-sm" : "text-gray-400 hover:text-gray-600"
+                        )}
+                      >
+                        Groq
+                      </button>
+                      <button 
+                        onClick={() => handleLlmProviderChange('nvidia')}
+                        className={cn(
+                          "flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+                          llmProvider === 'nvidia' ? "bg-white text-natural-green shadow-sm" : "text-gray-400 hover:text-gray-600"
+                        )}
+                      >
+                        NVIDIA
+                      </button>
                     </div>
                     
-                    <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">
-                      Enter your <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" className="text-natural-green underline">Google AI Studio API Key</a> to use your own quota. Key is stored locally in your browser.
-                    </p>
+                    {llmProvider === 'gemini' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 block">API Key</label>
+                          <p className="text-[9px] text-gray-500 leading-relaxed mb-2">
+                            Enter your <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" className="text-natural-green underline">Google AI Studio API Key</a>.
+                          </p>
+                          <input 
+                            type="password"
+                            value={apiKey}
+                            onChange={handleApiKeyChange}
+                            placeholder="AIzaSy..."
+                            className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 block">Gemini Model</label>
+                          <select 
+                            value={geminiModel}
+                            onChange={handleGeminiModelChange}
+                            className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                          >
+                            <optgroup label="Gemini 3.1 Series">
+                              <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Preview)</option>
+                              <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+                              <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash-Lite (Preview)</option>
+                            </optgroup>
+                            <optgroup label="Gemini 3 Series">
+                              <option value="gemini-3-flash">Gemini 3 Flash (Preview)</option>
+                              <option value="deep-research-preview-04-2026">Gemini Deep Research (Preview)</option>
+                            </optgroup>
+                            <optgroup label="Gemini 2.5 Series">
+                              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+                            </optgroup>
+                            <optgroup label="Gemini 2.0 Series (Stable)">
+                              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                              <option value="gemini-2.0-flash-lite-preview-02-05">Gemini 2.0 Flash Lite</option>
+                            </optgroup>
+                            <optgroup label="Open Weights (Gemma)">
+                              <option value="gemma-4-31b-it">Gemma 4 (31B IT)</option>
+                              <option value="gemma-4-26b-a4b-it">Gemma 4 (26B IT)</option>
+                            </optgroup>
+                            <optgroup label="Legacy">
+                              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            </optgroup>
+                          </select>
+                        </div>
+                      </div>
+                    )}
 
-                    <input 
-                      type="password"
-                      value={apiKey}
-                      onChange={handleApiKeyChange}
-                      placeholder="AIzaSy..."
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20 focus:border-natural-green transition-all"
-                    />
+                    {llmProvider === 'openrouter' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 block">API Key</label>
+                          <input 
+                            type="password"
+                            value={orKey}
+                            onChange={handleOrKeyChange}
+                            placeholder="sk-or-v1-..."
+                            className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Select Free Model</label>
+                            <button 
+                              onClick={fetchFreeModels} 
+                              disabled={fetchingModels}
+                              className="text-[8px] font-bold text-natural-green uppercase hover:underline"
+                            >
+                              {fetchingModels ? '...' : 'Refresh'}
+                            </button>
+                          </div>
+                          {orModels.length > 0 ? (
+                            <select 
+                              value={orModel}
+                              onChange={handleOrModelChange}
+                              className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                            >
+                              {orModels.map(m => (
+                                <option key={m.id} value={m.id}>{m.name.split('/').pop() || m.id}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <p className="text-[10px] text-gray-400 italic">No free models found or still loading...</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-                    {apiKey && (
+                    {llmProvider === 'groq' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 block">API Key</label>
+                          <input 
+                            type="password"
+                            value={groqKey}
+                            onChange={handleGroqKeyChange}
+                            placeholder="gsk_..."
+                            className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 block">Groq Model</label>
+                          <select 
+                            value={groqModel}
+                            onChange={handleGroqModelChange}
+                            className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                          >
+                            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile)</option>
+                            <option value="llama-3.1-8b-instant">Llama 3.1 8B (Instant)</option>
+                            <option value="openai/gpt-oss-120b">OpenAI GPT-OSS 120B</option>
+                            <option value="openai/gpt-oss-20b">OpenAI GPT-OSS 20B</option>
+                            <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                            <option value="gemma2-9b-it">Gemma2 9B</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {llmProvider === 'nvidia' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 block">NVIDIA Key</label>
+                          <input 
+                            type="password"
+                            value={nvKey}
+                            onChange={handleNvKeyChange}
+                            placeholder="nvapi-..."
+                            className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Select Model</label>
+                            <span className="text-[8px] font-bold text-natural-green uppercase">{nvStatus}</span>
+                          </div>
+                          {nvModels.length > 0 ? (
+                            <select 
+                              value={nvModel}
+                              onChange={handleNvModelChange}
+                              className="w-full px-4 py-2 bg-gray-50 border border-natural-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-natural-green/20"
+                            >
+                              {nvModels.map(id => (
+                                <option key={id} value={id}>{id.split('/').pop() || id}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <p className="text-[10px] text-gray-400 italic">Provide a valid API Key to detect models...</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {(llmProvider === 'gemini' ? apiKey : llmProvider === 'openrouter' ? orKey : llmProvider === 'groq' ? groqKey : nvKey) && (
                       <div className="mt-4 p-3 bg-natural-green/5 border border-natural-green/10 rounded-xl flex items-center gap-2">
                         <CheckCircle2 className="w-3 h-3 text-natural-green" />
-                        <span className="text-[9px] font-black text-natural-green uppercase tracking-widest">Custom Key Active</span>
+                        <span className="text-[9px] font-black text-natural-green uppercase tracking-widest">
+                          {llmProvider === 'gemini' ? 'Gemini Active' : llmProvider === 'openrouter' ? 'OpenRouter Active' : llmProvider === 'groq' ? 'Groq Active' : 'NVIDIA Active'}
+                        </span>
                       </div>
                     )}
                   </motion.div>

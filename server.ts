@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { Groq } from "groq-sdk";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -30,6 +31,90 @@ const getGenAI = (req: express.Request) => {
   return genAI;
 };
 
+async function askLLM(req: express.Request, prompt: string, options: { model?: string } = {}) {
+  const provider = req.headers['x-provider'] as string || 'gemini';
+  
+  if (provider === 'openrouter') {
+    const apiKey = req.headers['x-openrouter-key'] as string;
+    const model = req.headers['x-openrouter-model'] as string || 'google/gemini-2.0-flash-001';
+    
+    if (!apiKey) throw new Error("OpenRouter API Key required");
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ais-dev.run.app", // standard placeholder
+        "X-Title": "EbookForge Studio",
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(`OpenRouter Error: ${err.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } else if (provider === 'nvidia') {
+    const apiKey = req.headers['x-nvidia-key'] as string;
+    const model = req.headers['x-nvidia-model'] as string || 'meta/llama-3.3-70b-instruct';
+    
+    if (!apiKey) throw new Error("NVIDIA API Key required");
+
+    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        top_p: 0.7,
+        max_tokens: 1024,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(`NVIDIA Error: ${err.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } else if (provider === 'groq') {
+    const apiKey = req.headers['x-groq-key'] as string;
+    const model = req.headers['x-groq-model'] as string || 'llama3-8b-8192';
+    
+    if (!apiKey) throw new Error("Groq API Key required");
+
+    const groq = new Groq({ apiKey });
+    const completion = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: model,
+    });
+
+    return completion.choices[0]?.message?.content || "";
+  } else {
+    // Default to Gemini
+    const client = getGenAI(req);
+    const model = (req.headers['x-gemini-model'] as string) || options.model || "gemini-2.0-flash";
+    
+    const result = await client.models.generateContent({
+      model: model,
+      contents: prompt
+    });
+    return result.text;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -39,7 +124,6 @@ async function startServer() {
   // API Routes
   app.post("/api/generate-outline", async (req, res) => {
     try {
-      const client = getGenAI(req);
       const { title, audience, pages, template, tone, guidance } = req.body;
       
       // Dynamic chapter count based on page count
@@ -86,12 +170,9 @@ async function startServer() {
       }
       Do not include markdown formatting or backticks, just the JSON object.`;
  
-      const response = await client.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt
-      });
+      const response = await askLLM(req, prompt, { model: "gemini-2.5-flash" });
 
-      let text = response.text.trim();
+      let text = response.trim();
       
       // Basic cleanup in case Gemini returns markdown
       if (text.startsWith("```json")) {
@@ -113,7 +194,6 @@ async function startServer() {
 
   app.post("/api/generate-chapter", async (req, res) => {
     try {
-      const client = getGenAI(req);
       const { 
         chapterIndex, 
         totalChapters, 
@@ -172,11 +252,7 @@ async function startServer() {
         ${userDraft}`;
       }
 
-      const chapterResponse = await client.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt
-      });
-      const chapterContent = chapterResponse.text;
+      const chapterContent = await askLLM(req, prompt, { model: "gemini-2.5-flash" });
 
       const imagePromptRequest = `You are a professional art director for a high-end luxury publishing house. 
       Generate a HIGHLY DETAILED, cinemmatic, and atmospheric image prompt for Chapter "${chapterTitle}" from the book "${title}".
@@ -192,11 +268,7 @@ async function startServer() {
       
       Return ONLY THE PROMPT STRING.`;
       
-      const imagePromptResponse = await client.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: imagePromptRequest
-      });
-      const imagePrompt = imagePromptResponse.text.trim();
+      const imagePrompt = await askLLM(req, imagePromptRequest, { model: "gemini-2.5-flash" });
 
       const summaryPrompt = `Summarize the chapter content in exactly 120 words for the purpose of maintaining context for the next chapter. 
       Focus on key concepts taught and outcomes reached.
@@ -204,11 +276,7 @@ async function startServer() {
       Content to summarize:
       ${chapterContent}`;
 
-      const summaryResponse = await client.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: summaryPrompt
-      });
-      const summary = summaryResponse.text.trim();
+      const summary = await askLLM(req, summaryPrompt, { model: "gemini-2.5-flash" });
 
       res.json({ content: chapterContent, summary, imagePrompt });
     } catch (error: any) {
@@ -237,7 +305,6 @@ async function startServer() {
 
   app.post("/api/generate-image-prompt", async (req, res) => {
     try {
-      const client = getGenAI(req);
       const { title, pageTitle, content } = req.body;
       
       const prompt = `You are a professional art director for high-end ebook publishing. 
@@ -257,12 +324,9 @@ async function startServer() {
  
       Return ONLY the prompt string. No descriptions or extra text.`;
  
-      const response = await client.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt
-      });
+      const response = await askLLM(req, prompt, { model: "gemini-2.5-flash" });
 
-      res.json({ prompt: response.text.trim() });
+      res.json({ prompt: response.trim() });
     } catch (error: any) {
       console.error("Image Prompt Error:", error);
       if (error?.status === 429 || error?.message?.includes("quota")) {

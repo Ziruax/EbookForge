@@ -4,10 +4,33 @@ const getHeaders = () => {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  const customKey = localStorage.getItem("gemini_api_key");
-  if (customKey) {
-    headers["x-gemini-key"] = customKey;
+  
+  const provider = localStorage.getItem("llm_provider") || "gemini";
+  headers["x-provider"] = provider;
+
+  if (provider === "openrouter") {
+    const orKey = localStorage.getItem("openrouter_api_key");
+    const orModel = localStorage.getItem("openrouter_model");
+    if (orKey) headers["x-openrouter-key"] = orKey;
+    if (orModel) headers["x-openrouter-model"] = orModel;
+  } else if (provider === "groq") {
+    const groqKey = localStorage.getItem("groq_api_key");
+    const groqModel = localStorage.getItem("groq_model");
+    if (groqKey) headers["x-groq-key"] = groqKey;
+    if (groqModel) headers["x-groq-model"] = groqModel;
+  } else if (provider === "nvidia") {
+    const nvKey = localStorage.getItem("nvidia_api_key");
+    const nvModel = localStorage.getItem("nvidia_model");
+    if (nvKey) headers["x-nvidia-key"] = nvKey;
+    if (nvModel) headers["x-nvidia-model"] = nvModel;
+  } else {
+    // gemini
+    const customKey = localStorage.getItem("gemini_api_key");
+    const geminiModel = localStorage.getItem("gemini_model");
+    if (customKey) headers["x-gemini-key"] = customKey;
+    if (geminiModel) headers["x-gemini-model"] = geminiModel;
   }
+  
   return headers;
 };
 
